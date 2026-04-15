@@ -52,7 +52,7 @@ The following values can be adjusted in `src/MountEvolved.cpp`:
 
 ## Credits
 
-Created for AzerothCore by the Dúnedain Server project.
+Created for AzerothCore by Cliffutubius.
 
 ## License
 

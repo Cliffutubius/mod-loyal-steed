@@ -1,4 +1,4 @@
-# mod-mount-evolved
+# mod-loyal-steed
 
 A feature-rich mount companion module for AzerothCore WotLK 3.3.5a that transforms your mount into a loyal, living companion.
 

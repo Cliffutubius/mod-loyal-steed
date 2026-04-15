@@ -29,7 +29,7 @@ A feature-rich mount companion module for AzerothCore WotLK 3.3.5a that transfor
 
 ## How to Obtain
 
-Purchase the **Loyal Mount Deed** from **Katie Hunter** at Eastvale Logging Camp in Elwynn Forest for 100 gold.
+Purchase the **Loyal Mount Deed** from **Katie Hunter** (or race quivalent NPC) at Eastvale Logging Camp in Elwynn Forest for 100 gold.
 
 ## Usage
 

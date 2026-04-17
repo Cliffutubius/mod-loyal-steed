@@ -28,7 +28,6 @@
 #include "Chat.h"
 #include "Channel.h"
 
-
 // Module configuration
 struct LoyalSteedConfig
 {

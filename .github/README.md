@@ -1,4 +1,4 @@
-# mod-mount-evolved
+# mod-loyal-steed
 
 A feature-rich mount companion module for AzerothCore WotLK 3.3.5a that transforms your mount into a loyal, living companion.
 
@@ -29,7 +29,7 @@ A feature-rich mount companion module for AzerothCore WotLK 3.3.5a that transfor
 
 ## How to Obtain
 
-Purchase the **Loyal Mount Deed** from **Katie Hunter** at Eastvale Logging Camp in Elwynn Forest for 100 gold.
+Purchase the **Loyal Mount Deed** from **Katie Hunter** (or race quivalent NPC) for 95 gold.
 
 ## Usage
 
@@ -52,7 +52,7 @@ The following values can be adjusted in `src/MountEvolved.cpp`:
 
 ## Credits
 
-Created for AzerothCore by the Dúnedain Server project.
+Created for AzerothCore by Cliffutubius.
 
 ## License
 

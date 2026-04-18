@@ -4,7 +4,7 @@
  */
 
 #include "Config.h"
-#include "mod-improved-bank/src/improved_bank.h"
+#include "improved_bank/improved_bank.h"
 #include "ScriptMgr.h"
 #include "Player.h"
 #include "Chat.h"
@@ -27,7 +27,6 @@
 #include "SpellScript.h"
 #include "Chat.h"
 #include "Channel.h"
-
 
 // Module configuration
 struct LoyalSteedConfig
@@ -119,10 +118,35 @@ void FullRemoveControlled(Player* player, Creature* horse)
 bool IsHorseOwner(Player* player, Creature* creature)
 {
     if (!player || !creature) return false;
+    // First check by saved horse GUID
     QueryResult result = CharacterDatabase.Query(
-        "SELECT 1 FROM rangers_war_horse_owner WHERE owner_guid = {} AND horse_guid = {}",
-        player->GetGUID().GetCounter(), creature->GetGUID().GetCounter());
-    return result != nullptr;
+        "SELECT horse_guid FROM rangers_war_horse_owner WHERE owner_guid = {}",
+        player->GetGUID().GetCounter());
+    if (!result) return false;
+    uint32 savedGuid = result->Fetch()[0].Get<uint32>();
+    uint32 creatureGuid = creature->GetGUID().GetCounter();
+    // If GUIDs match, ownership confirmed
+    if (savedGuid == creatureGuid)
+        return true;
+    // If saved GUID is 0 (e.g. after login/death), check display ID and update GUID
+    if (savedGuid == 0)
+    {
+        QueryResult dispResult = CharacterDatabase.Query(
+            "SELECT display_id FROM rangers_war_horse_owner WHERE owner_guid = {}",
+            player->GetGUID().GetCounter());
+        if (!dispResult) return false;
+        uint32 savedDisplayId = dispResult->Fetch()[0].Get<uint32>();
+        if (creature->GetDisplayId() == savedDisplayId ||
+            creature->GetNativeDisplayId() == savedDisplayId)
+        {
+            // Update horse_guid so future checks work
+            CharacterDatabase.Execute(
+                "UPDATE rangers_war_horse_owner SET horse_guid = {} WHERE owner_guid = {}",
+                creatureGuid, player->GetGUID().GetCounter());
+            return true;
+        }
+    }
+    return false;
 }
 
 void DespawnCampsite(Creature* horse)
@@ -229,11 +253,14 @@ Creature* SummonHorseForPlayer(Player* player, uint32 savedDisplayId)
         "SELECT is_camping, camp_x, camp_y, camp_z, camp_o, camp_map FROM rangers_war_horse_owner WHERE owner_guid = {}",
         player->GetGUID().GetCounter());
     bool isCamping = false;
+    bool hasCampsite = false;
     float campX = 0, campY = 0, campZ = 0, campO = 0;
     uint32 campMap = 0;
     if (campCheck)
     {
-        isCamping = campCheck->Fetch()[0].Get<uint8>() > 0;
+        uint8 campState = campCheck->Fetch()[0].Get<uint8>();
+        isCamping = campState > 0;
+        hasCampsite = campState == 2;
         campX = campCheck->Fetch()[1].Get<float>();
         campY = campCheck->Fetch()[2].Get<float>();
         campZ = campCheck->Fetch()[3].Get<float>();
@@ -259,13 +286,14 @@ Creature* SummonHorseForPlayer(Player* player, uint32 savedDisplayId)
         FullRemoveControlled(player, horse);
         if (savedDisplayId && savedDisplayId != DEFAULT_DISPLAY_ID)
             horse->SetDisplayId(savedDisplayId);
-        horse->SetSpeed(MOVE_WALK, 0.5f);
-        horse->SetSpeed(MOVE_RUN, 0.85f);
+        horse->SetSpeed(MOVE_WALK, 1.0f);
+        horse->SetSpeed(MOVE_RUN, 1.0f);
         if (isCamping)
         {
             horse->GetMotionMaster()->Clear();
             horse->GetMotionMaster()->MoveIdle();
-            SpawnCampsite(horse);
+            if (hasCampsite)
+                SpawnCampsite(horse);
         }
         else
         {
@@ -281,7 +309,7 @@ Creature* SummonHorseForPlayer(Player* player, uint32 savedDisplayId)
 
 struct npc_rangers_war_horse_AI : public ScriptedAI
 {
-    npc_rangers_war_horse_AI(Creature* c) : ScriptedAI(c), _ownerGuid(ObjectGuid::Empty), _shouldFollow(false), _followTimer(0), _dismountX(0.0f), _dismountY(0.0f), _dismountZ(0.0f), _hasDismountPos(false), _isCamping(false) {}
+    npc_rangers_war_horse_AI(Creature* c) : ScriptedAI(c), _ownerGuid(ObjectGuid::Empty), _followTimer(0), _shouldFollow(false), _dismountX(0.0f), _dismountY(0.0f), _dismountZ(0.0f), _hasDismountPos(false), _isCamping(false) {}
 
     ObjectGuid _ownerGuid;
     uint32 _followTimer;
@@ -320,8 +348,8 @@ struct npc_rangers_war_horse_AI : public ScriptedAI
             if (!_hasDismountPos) return;
             me->NearTeleportTo(_dismountX, _dismountY, _dismountZ, me->GetOrientation());
             me->GetMotionMaster()->Clear();
-            me->SetSpeed(MOVE_RUN, 0.85f);
-            me->SetSpeed(MOVE_WALK, 0.5f);
+            me->SetSpeed(MOVE_RUN, 1.0f);
+            me->SetSpeed(MOVE_WALK, 1.0f);
             if (Player* owner = ObjectAccessor::GetPlayer(*me, _ownerGuid))
                 me->GetMotionMaster()->MoveFollow(owner, 4.0f, M_PI);
             _hasDismountPos = false;
@@ -475,6 +503,13 @@ public:
         if (action == GOSSIP_MOUNT)
         {
             CloseGossipMenuFor(player);
+            // Reset camp state so horse follows on next summon
+            DespawnCampsite(creature);
+            if (npc_rangers_war_horse_AI* ai = dynamic_cast<npc_rangers_war_horse_AI*>(creature->GetAI()))
+                ai->SetCamping(false);
+            CharacterDatabase.Execute(
+                "UPDATE rangers_war_horse_owner SET is_camping = 0 WHERE owner_guid = {}",
+                player->GetGUID().GetCounter());
             QueryResult mountResult = CharacterDatabase.Query(
                 "SELECT mount_spell_id FROM rangers_war_horse_owner WHERE owner_guid = {}",
                 player->GetGUID().GetCounter());
@@ -490,8 +525,8 @@ public:
             CloseGossipMenuFor(player);
             DespawnCampsite(creature);
             creature->GetMotionMaster()->Clear();
-            creature->SetSpeed(MOVE_RUN, 0.85f);
-            creature->SetSpeed(MOVE_WALK, 0.5f);
+            creature->SetSpeed(MOVE_RUN, 1.0f);
+            creature->SetSpeed(MOVE_WALK, 1.0f);
             creature->GetMotionMaster()->MoveFollow(player, 4.0f, M_PI);
             if (npc_rangers_war_horse_AI* ai = dynamic_cast<npc_rangers_war_horse_AI*>(creature->GetAI()))
                 ai->SetCamping(false);
@@ -520,7 +555,7 @@ public:
             if (npc_rangers_war_horse_AI* ai = dynamic_cast<npc_rangers_war_horse_AI*>(creature->GetAI()))
                 ai->SetCamping(true);
             CharacterDatabase.Execute(
-                "UPDATE rangers_war_horse_owner SET is_camping = 1, camp_x = {}, camp_y = {}, camp_z = {}, camp_o = {}, camp_map = {} WHERE owner_guid = {}",
+                "UPDATE rangers_war_horse_owner SET is_camping = 2, camp_x = {}, camp_y = {}, camp_z = {}, camp_o = {}, camp_map = {} WHERE owner_guid = {}",
                 creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ(), creature->GetOrientation(), creature->GetMapId(), player->GetGUID().GetCounter());
             return true;
         }

@@ -875,6 +875,11 @@ private:
 
         CloseGossipMenuFor(player);
 
+        // Reset camp state so horse follows on arrival
+        DespawnCampsite(creature);
+        CharacterDatabase.Execute(
+            "UPDATE rangers_war_horse_owner SET is_camping = 0 WHERE owner_guid = {}",
+            guid);
         // Despawn horse — it travels ahead
         creature->DespawnOrUnsummon(1000ms);
 
@@ -986,11 +991,12 @@ public:
             }
         }
 
-        // Also scan nearby to catch companion-summoned horses
+        // Also scan nearby to catch companion-summoned horses — only despawn our own
         std::list<Creature*> nearbyHorses;
         player->GetCreatureListWithEntryInGrid(nearbyHorses, HORSE_NPC_ENTRY, 200.0f);
         for (Creature* nearby : nearbyHorses)
         {
+            if (!IsHorseOwner(player, nearby)) continue;
             DespawnCampsite(nearby);
             nearby->DespawnOrUnsummon();
         }
